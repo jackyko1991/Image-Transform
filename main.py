@@ -25,6 +25,48 @@ def load_img(path,dimension,view=False):
 
 	return image_new
 
+def load_nifti(path, dimension, view=False):
+	# load the data
+	reader = sitk.ImageFileReader()
+	reader.SetFileName(path)
+	image = reader.Execute()
+
+	# resize to desire size
+	old_spacing = image.GetSpacing()
+	old_size = image.GetSize()
+   
+	new_spacing = []
+	for i in range(3):
+		new_spacing.append(int(math.ceil(old_spacing[i]*old_size[i]/dimension[i])))
+	new_size = tuple(dimension)
+
+	resampler = sitk.ResampleImageFilter()
+	resampler.SetInterpolator(2)
+	resampler.SetOutputSpacing(new_spacing)
+	resampler.SetSize(new_size)
+
+	# resample on image
+	resampler.SetOutputOrigin(image.GetOrigin())
+	resampler.SetOutputDirection(image.GetDirection())
+	# print("Resampling image...")
+	image_new = resampler.Execute(image)
+	image_new = sitk.GetArrayFromImage(image_new)
+
+	# to unify matrix dimension order between SimpleITK([x,y,z]) and numpy([z,y,x])
+	image_new = np.transpose(image_new,(2,1,0))
+
+	if view:
+		fig = plt.figure(1)
+
+		for layer in range(image_new.shape[2]):
+			ax = fig.add_subplot(math.ceil(image_new.shape[2]/4), 4, layer+1)
+			ax.imshow(image_new[:,:,layer], cmap="gray")
+			ax.axis("off")
+
+		plt.show()
+
+	return image_new
+
 def load2D():
 	DIMS = 400
 	IMAGE1 = './data/lena.png'
@@ -38,8 +80,19 @@ def load2D():
 
 	return img_conc
 
-def load3D():
-	return None
+def load3D(layer_num):
+	DIMS = [256,256,layer_num]
+	IMAGE1 = './data/ch2.nii.gz'
+	IMAGE2 = './data/brodmann.nii.gz'
+
+	img1 = load_nifti(IMAGE1,DIMS,view=False)
+	img2 = load_nifti(IMAGE2,DIMS,view=False)
+
+	# stack into single tensor
+	img_conc = np.stack([img1,img2], axis=0)
+	img_conc = np.expand_dims(img_conc, axis=-1)
+
+	return img_conc
 
 def transform2D(image, affine_matrix):
 	# grab the shape of the image
@@ -47,8 +100,9 @@ def transform2D(image, affine_matrix):
 	M = affine_matrix
 
 	# mesh grid generation
-	x = np.linspace(-1, 1, W)
-	y = np.linspace(-1, 1, H)
+	# use x = np.linspace(-1, 1, W)  if you want to rotate about center
+	x = np.linspace(0, 1, W) 
+	y = np.linspace(0, 1, H)
 	x_t, y_t  = np.meshgrid(x,y)
 
 	# augment the dimensions to create homogeneous coordinates
@@ -70,8 +124,11 @@ def transform2D(image, affine_matrix):
 	y_s = batch_grids[:,:,:,1:2].squeeze()\
 
 	# rescale x and y to [0, W/H]
-	x = ((x_s+1.)*W)*0.5
-	y = ((y_s+1.)*H)*0.5
+	# use this function if you want to rotate about center
+	# x = ((x_s+1.)*W)*0.5
+	# y = ((y_s+1.)*H)*0.5
+	x = ((x_s)*W)
+	y = ((y_s)*H)
 
 	# for each coordinate we need to grab the corner coordinates
 	x0 = np.floor(x).astype(np.int64)
@@ -109,15 +166,95 @@ def transform2D(image, affine_matrix):
 
 	return image_out
 
-def transform3D(image):
+def transform3D(image, affine_matrix):
 	# grab the shape of the image
-	B, H, W, D, C = input_img.shape
-	np.array([[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.]])	
-	print("3d image under development")
-	exit()
+	B, H, W, D, C = image.shape
+	M = affine_matrix
+	
+	# mesh grid generation
+	x = np.linspace(0, 1, W)
+	y = np.linspace(0, 1, H)
+	z = np.linspace(0, 1, D)
+	x_t, y_t, z_t  = np.meshgrid(x,y,z)
+
+	# augment the dimensions to create homogeneous coordinates
+	# reshape to (xt, yt, zt, 1)
+	ones = np.ones(np.prod(x_t.shape))
+	sampling_grid = np.vstack([x_t.flatten(), y_t.flatten(), z_t.flatten(), ones])
+	# repeat to number of batches
+	sampling_grid = np.resize(sampling_grid, (B, 4, H*W*D))
+
+	# transform the sampling grid, i.e. batch multiply
+	batch_grids = np.matmul(M, sampling_grid) # the batch grid has the shape (B, 3, H*W*D)
+
+	# reshape to (B, H, W, D, 3)
+	batch_grids = batch_grids.reshape(B, 3, H, W, D)
+	batch_grids = np.moveaxis(batch_grids,1,-1)
+
+	# bilinear resampler
+	x_s = batch_grids[:,:,:,:,0:1].squeeze()
+	y_s = batch_grids[:,:,:,:,1:2].squeeze()
+	z_s = batch_grids[:,:,:,:,2:3].squeeze()
+
+	# rescale x, y and z to [0, W/H]
+	x = ((x_s)*W)
+	y = ((y_s)*H)
+	z = ((z_s)*D)
+
+	# for each coordinate we need to grab the corner coordinates
+	x0 = np.floor(x).astype(np.int64)
+	x1 = x0+1
+	y0 = np.floor(y).astype(np.int64)
+	y1 = y0+1
+	z0 = np.floor(z).astype(np.int64)
+	z1 = z0+1
+
+	# clip to fit actual image size
+	x0 = np.clip(x0, 0, W-1)
+	x1 = np.clip(x1, 0, W-1)
+	y0 = np.clip(y0, 0, H-1)
+	y1 = np.clip(y1, 0, H-1)
+	z0 = np.clip(z0, 0, D-1)
+	z1 = np.clip(z1, 0, D-1)
+
+	# grab the pixel value for each corner coordinate
+	Ia = image[np.arange(B)[:,None,None,None], y0, x0, z0]
+	Ib = image[np.arange(B)[:,None,None,None], y1, x0, z0]
+	Ic = image[np.arange(B)[:,None,None,None], y0, x1, z0]
+	Id = image[np.arange(B)[:,None,None,None], y1, x1, z0]
+	Ie = image[np.arange(B)[:,None,None,None], y0, x0, z1]
+	If = image[np.arange(B)[:,None,None,None], y1, x0, z1]
+	Ig = image[np.arange(B)[:,None,None,None], y0, x1, z1]
+	Ih = image[np.arange(B)[:,None,None,None], y1, x1, z1]
+
+	# calculated the weighted coefficients and actual pixel value
+	wa = (x1-x) * (y1-y) * (z1-z)
+	wb = (x1-x) * (y-y0) * (z1-z)
+	wc = (x-x0) * (y1-y) * (z1-z)
+	wd = (x-x0) * (y-y0) * (z1-z)
+	we = (x1-x) * (y1-y) * (z-z0)
+	wf = (x1-x) * (y-y0) * (z-z0)
+	wg = (x-x0) * (y1-y) * (z-z0)
+	wh = (x-x0) * (y-y0) * (z-z0)
+
+	# add dimension for addition
+	wa = np.expand_dims(wa, axis=4)
+	wb = np.expand_dims(wb, axis=4)
+	wc = np.expand_dims(wc, axis=4)
+	wd = np.expand_dims(wd, axis=4)
+	we = np.expand_dims(we, axis=4)
+	wf = np.expand_dims(wf, axis=4)
+	wg = np.expand_dims(wg, axis=4)
+	wh = np.expand_dims(wh, axis=4)
+
+	# compute output
+	image_out = wa*Ia + wb*Ib + wc*Ic + wd*Id + we*Ie + wf*If + wg*Ig + wh*Ih
+	image_out = image_out.astype(np.int64)
+
+	return image_out
 
 def main():
-	MODE = '2D'
+	MODE = '3D'
 
 	if MODE == '2D':
 		# 2D
@@ -131,7 +268,7 @@ def main():
 
 		# change affine matrix values
 		# translation
-		M[0,:,:] = [[1,0,0.5],[0,1,0.25]]
+		M[0,:,:] = [[1.,0.,0.],[0.,1.,0.]]
 		img_translate = transform2D(input_img, M)
 
 		# rotation
@@ -167,8 +304,36 @@ def main():
 		plt.show()
 	else:
 		# 3D
-		input_img = load3D() 
-		transform3D(input_img)
+		layer_num = 8
+		input_img = load3D(layer_num)
+
+		# define the affine matrix
+		# initialize M to identity transform
+		M = np.array([[1., 0., 0., 0.], [0., 1., 0., 0.] , [0., 0., 1., 0.]])
+		# repeat num_batch times
+		M = np.resize(M, (input_img.shape[0], 3, 4))
+
+		# change affine matrix values
+		# translation
+		M[0,:,:] = [[1,0,0,0],[0,1,0,0],[0,0,1,-1/16]]
+		img_translate = transform3D(input_img, M)
+
+		fig = plt.figure(1)
+
+		for layer in range(input_img.shape[3]):
+			ax0 = fig.add_subplot(4, input_img.shape[3], layer+1)
+			ax0.imshow(input_img[0,:,:,layer,0], cmap="gray")
+			ax0.axis("off")
+
+			ax1 = fig.add_subplot(4, input_img.shape[3], input_img.shape[3]*1 + layer+1)
+			ax1.imshow(img_translate[0,:,:,layer,0], cmap="gray")
+			ax1.axis("off")
+
+			# ax1 = fig.add_subplot(math.ceil(img_translate.shape[2]/4), 8, layer+1)
+			# ax.imshow(image_new[:,:,layer], cmap="gray")
+			
+
+		plt.show()
 
 
 if __name__=="__main__":
