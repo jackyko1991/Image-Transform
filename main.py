@@ -253,10 +253,67 @@ def transform3D(image, affine_matrix):
 
 	return image_out
 
-def main():
-	MODE = '3D'
+def mutual_information(hgram):
+	""" Mutual information for joint histogram
+	"""
+	# Convert bins counts to probability values
+	pxy = hgram / float(np.sum(hgram))
+	px = np.sum(pxy, axis=1) # marginal for x over y
+	py = np.sum(pxy, axis=0) # marginal for y over x
+	px_py = px[:, None] * py[None, :] # Broadcast to multiply marginals
+	# Now we can do the calculation using the pxy, px_py 2D arrays
+	nzs = pxy > 0 # Only non-zero pxy values contribute to the sum
+	return np.sum(pxy[nzs] * np.log(pxy[nzs] / px_py[nzs]))
 
-	if MODE == '2D':
+def image_matching_metric(image1, image2, title="",plot=False):
+
+	if plot:
+		# histogram and mutual information
+		plt.figure(1)
+		ax1 = plt.subplot(231)
+		plt.hist(image1.ravel(), bins=20)
+		ax1.set_title('Input Image')
+
+		ax1 = plt.subplot(232)
+		plt.hist(image2.ravel(), bins=20)
+		ax1.set_title(title)
+
+		ax2 = plt.subplot(233)
+		plt.plot(image1.ravel(),image2.ravel(),'.')
+		plt.xlabel("Image1")
+		plt.ylabel("Image2")
+		corr = np.corrcoef(image1.ravel(), image2.ravel())[0,1]
+		ax2.set_title("Correlation:" + str(corr))
+
+		# 3d histogram
+		hist_2d, x_edges, y_edges = np.histogram2d(
+			image1.ravel(), image2.ravel(), bins=20)
+		# plot as image
+		ax3 = plt.subplot(234)
+		ax3.imshow(hist_2d.T, origin='lower')
+
+		mi = mutual_information(hist_2d)
+		ax3.set_title("Mutual Information: "+ str(mi))
+		plt.xlabel("Image1 bin")
+		plt.ylabel("Image2 bin")
+		# log histogram
+		hist_2d_log = np.zeros(hist_2d.shape)
+		non_zeros = hist_2d != 0
+		hist_2d_log[non_zeros] = np.log(hist_2d[non_zeros])
+		ax4 = plt.subplot(235)
+		ax4 = plt.imshow(hist_2d_log.T, origin='lower')
+		plt.xlabel("Image1 bin (log)")
+		plt.ylabel("Image2 bin (log")
+
+		plt.show()
+
+	return corr, mi
+
+
+def main():
+	MODE = '2D'
+
+	if MODE == '3D':
 		# 2D
 		input_img = load2D()
 
@@ -280,6 +337,10 @@ def main():
 		M[0,:,:] = [[1,0.5,0],[0.5,1,0]]
 		img_shear = transform2D(input_img, M)
 
+		image_matching_metric(input_img[0,:,:,:], img_translate[0,:,:,:], title="Translate",plot=True)
+		image_matching_metric(input_img[0,:,:,:], img_rotate[0,:,:,:], title="Rotate",plot=True)
+		image_matching_metric(input_img[0,:,:,:], img_shear[0,:,:,:], title="Shear",plot=True)
+
 		plt.figure(1)
 		ax1 = plt.subplot(221)
 		plt.imshow(input_img[0,:,:,:], cmap="gray")
@@ -302,6 +363,7 @@ def main():
 		plt.axis("off")
 
 		plt.show()
+
 	else:
 		# 3D
 		layer_num = 8
@@ -315,7 +377,7 @@ def main():
 
 		# change affine matrix values
 		# translation
-		M[0,:,:] = [[1,0,0,0.25],[0,1,0,0.25],[0,0,1,0]]
+		M[0,:,:] = [[1,0,0,0],[0,1,0,0],[0,0,1,0]]
 		img_translate = transform3D(input_img, M)
 
 		# rotation
@@ -344,6 +406,10 @@ def main():
 		# shear
 		M[0,:,:] = [[1,0.5,0,0],[0.5,1,0,0],[0,0,1,0]]
 		img_shear = transform3D(input_img, M)
+
+		image_matching_metric(input_img[0,:,:,:,:], img_translate[0,:,:,:,:], title="Translate",plot=True)
+		image_matching_metric(input_img[0,:,:,:,:], img_rotate[0,:,:,:,:], title="Rotate",plot=True)
+		image_matching_metric(input_img[0,:,:,:,:], img_shear[0,:,:,:,:], title="Shear",plot=True)
 
 		fig = plt.figure(1)
 
