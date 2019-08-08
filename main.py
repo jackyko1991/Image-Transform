@@ -405,9 +405,9 @@ def affine_transform(mode):
 		M[0,:,:] = [[1,0.5,0,0],[0.5,1,0,0],[0,0,1,0]]
 		img_shear = transform3D(input_img, M)
 
-		image_matching_metric(input_img[0,:,:,:,:], img_translate[0,:,:,:,:], title="Translate",plot=True)
-		image_matching_metric(input_img[0,:,:,:,:], img_rotate[0,:,:,:,:], title="Rotate",plot=True)
-		image_matching_metric(input_img[0,:,:,:,:], img_shear[0,:,:,:,:], title="Shear",plot=True)
+		image_matching_metric(input_img[0,:,:,:,:], img_translate[0,:,:,:,:], title="Translate",plot=False)
+		image_matching_metric(input_img[0,:,:,:,:], img_rotate[0,:,:,:,:], title="Rotate",plot=False)
+		image_matching_metric(input_img[0,:,:,:,:], img_shear[0,:,:,:,:], title="Shear",plot=False)
 
 		fig = plt.figure(1)
 
@@ -424,7 +424,7 @@ def affine_transform(mode):
 			ax2.imshow(img_rotate[0,:,:,layer,0], cmap="gray")
 			ax2.axis("off")
 
-			ax3 = fig.add_subplot(4, input_img.shape[3], input_img.shape[3]*2 + layer+1)
+			ax3 = fig.add_subplot(4, input_img.shape[3], input_img.shape[3]*3 + layer+1)
 			ax3.imshow(img_shear[0,:,:,layer,0], cmap="gray")
 			ax3.axis("off")
 
@@ -434,7 +434,7 @@ def vector_transform(mode):
 	return
 
 def main():
-	MODE = '2D'
+	MODE = '3D'
 	METHOD = 'AFFINE'
 
 	if METHOD == 'AFFINE':
