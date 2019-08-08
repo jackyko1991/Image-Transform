@@ -323,7 +323,7 @@ def affine_transform(mode):
 
 		# change affine matrix values
 		# translation
-		M[0,:,:] = [[1.,0.,0.],[0.,1.,0.]]
+		M[0,:,:] = [[1.,0.,0.25],[0.,1.,0.5]]
 		img_translate = transform2D(input_img, M)
 
 		# rotation
@@ -434,7 +434,7 @@ def vector_transform(mode):
 	return
 
 def main():
-	MODE = '3D'
+	MODE = '2D'
 	METHOD = 'AFFINE'
 
 	if METHOD == 'AFFINE':
