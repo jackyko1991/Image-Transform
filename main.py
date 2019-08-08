@@ -121,7 +121,7 @@ def transform2D(image, affine_matrix):
 
 	# bilinear resampler
 	x_s = batch_grids[:,:,:,0:1].squeeze()
-	y_s = batch_grids[:,:,:,1:2].squeeze()\
+	y_s = batch_grids[:,:,:,1:2].squeeze()
 
 	# rescale x and y to [0, W/H]
 	# use this function if you want to rotate about center
@@ -266,6 +266,12 @@ def mutual_information(hgram):
 	return np.sum(pxy[nzs] * np.log(pxy[nzs] / px_py[nzs]))
 
 def image_matching_metric(image1, image2, title="",plot=False):
+	corr = np.corrcoef(image1.ravel(), image2.ravel())[0,1]
+
+	# 3d histogram
+	hist_2d, x_edges, y_edges = np.histogram2d(
+		image1.ravel(), image2.ravel(), bins=20)
+	mi = mutual_information(hist_2d)
 
 	if plot:
 		# histogram and mutual information
@@ -282,17 +288,12 @@ def image_matching_metric(image1, image2, title="",plot=False):
 		plt.plot(image1.ravel(),image2.ravel(),'.')
 		plt.xlabel("Image1")
 		plt.ylabel("Image2")
-		corr = np.corrcoef(image1.ravel(), image2.ravel())[0,1]
+		
 		ax2.set_title("Correlation:" + str(corr))
 
-		# 3d histogram
-		hist_2d, x_edges, y_edges = np.histogram2d(
-			image1.ravel(), image2.ravel(), bins=20)
 		# plot as image
 		ax3 = plt.subplot(234)
 		ax3.imshow(hist_2d.T, origin='lower')
-
-		mi = mutual_information(hist_2d)
 		ax3.set_title("Mutual Information: "+ str(mi))
 		plt.xlabel("Image1 bin")
 		plt.ylabel("Image2 bin")
@@ -309,11 +310,8 @@ def image_matching_metric(image1, image2, title="",plot=False):
 
 	return corr, mi
 
-
-def main():
-	MODE = '2D'
-
-	if MODE == '3D':
+def affine_transform(mode):
+	if mode == '2D':
 		# 2D
 		input_img = load2D()
 
@@ -389,7 +387,7 @@ def main():
 		alpha = alpha*math.pi/180
 		beta = beta*math.pi/180
 		gamma = gamma*math.pi/180
-		# Tait-Bryan angles in homogeneous form
+		# Tait-Bryan angles in homogeneous form, reference: https://people.cs.clemson.edu/~dhouse/courses/401/notes/affines-matrices.pdf
 		Rx = [[1,0,0,0],[0,math.cos(alpha),-math.sin(alpha),0],[0,math.sin(alpha),math.cos(alpha),0],[0.,0.,0,1.]]
 		Ry = [[math.cos(beta),0,math.sin(beta),0],[0,1,0,0],[-math.sin(beta),0,math.cos(beta),0],[0.,0.,0.,1.]]
 		Rz = [[math.cos(gamma),-math.sin(gamma),0,0],[math.sin(gamma),math.cos(gamma),0,0],[0,0,1,0],[0.,0.,0.,1.]]
@@ -431,6 +429,19 @@ def main():
 			ax3.axis("off")
 
 		plt.show()
+
+def vector_transform(mode):
+	return
+
+def main():
+	MODE = '2D'
+	METHOD = 'AFFINE'
+
+	if METHOD == 'AFFINE':
+		affine_transform(MODE)
+	else:
+		vector_transform(MODE)
+	
 
 
 if __name__=="__main__":
