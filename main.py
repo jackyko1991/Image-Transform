@@ -196,7 +196,7 @@ def transform3D(image, affine_matrix):
 	y_s = batch_grids[:,:,:,:,1:2].squeeze()
 	z_s = batch_grids[:,:,:,:,2:3].squeeze()
 
-	# rescale x, y and z to [0, W/H]
+	# rescale x, y and z to [0, W/H/D]
 	x = ((x_s)*W)
 	y = ((y_s)*H)
 	z = ((z_s)*D)
@@ -315,8 +315,35 @@ def main():
 
 		# change affine matrix values
 		# translation
-		M[0,:,:] = [[1,0,0,0],[0,1,0,0],[0,0,1,-1/16]]
+		M[0,:,:] = [[1,0,0,0.25],[0,1,0,0.25],[0,0,1,0]]
 		img_translate = transform3D(input_img, M)
+
+		# rotation
+		alpha = 20 #degree
+		beta = 0
+		gamma = 0
+
+		# convert from degree to radian
+		alpha = alpha*math.pi/180
+		beta = beta*math.pi/180
+		gamma = gamma*math.pi/180
+		# Tait-Bryan angles in homogeneous form
+		Rx = [[1,0,0,0],[0,math.cos(alpha),-math.sin(alpha),0],[0,math.sin(alpha),math.cos(alpha),0],[0.,0.,0,1.]]
+		Ry = [[math.cos(beta),0,math.sin(beta),0],[0,1,0,0],[-math.sin(beta),0,math.cos(beta),0],[0.,0.,0.,1.]]
+		Rz = [[math.cos(gamma),-math.sin(gamma),0,0],[math.sin(gamma),math.cos(gamma),0,0],[0,0,1,0],[0.,0.,0.,1.]]
+
+		print("Rx",Rx)
+		print("Ry",Ry)
+		print("Rz",Rz)
+
+		M[0,:,:] = np.matmul(Rz,np.matmul(Ry,Rx))[0:3,:]
+		print(M)
+
+		img_rotate = transform3D(input_img, M)
+
+		# shear
+		M[0,:,:] = [[1,0.5,0,0],[0.5,1,0,0],[0,0,1,0]]
+		img_shear = transform3D(input_img, M)
 
 		fig = plt.figure(1)
 
@@ -329,9 +356,13 @@ def main():
 			ax1.imshow(img_translate[0,:,:,layer,0], cmap="gray")
 			ax1.axis("off")
 
-			# ax1 = fig.add_subplot(math.ceil(img_translate.shape[2]/4), 8, layer+1)
-			# ax.imshow(image_new[:,:,layer], cmap="gray")
-			
+			ax2 = fig.add_subplot(4, input_img.shape[3], input_img.shape[3]*2 + layer+1)
+			ax2.imshow(img_rotate[0,:,:,layer,0], cmap="gray")
+			ax2.axis("off")
+
+			ax3 = fig.add_subplot(4, input_img.shape[3], input_img.shape[3]*2 + layer+1)
+			ax3.imshow(img_shear[0,:,:,layer,0], cmap="gray")
+			ax3.axis("off")
 
 		plt.show()
 
