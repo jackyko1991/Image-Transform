@@ -67,8 +67,7 @@ def load_nifti(path, dimension, view=False):
 
 	return image_new
 
-def load2D():
-	DIMS = 400
+def load2D(DIMS=400):
 	IMAGE1 = './data/lena.png'
 	IMAGE2 = './data/lisa.jpg'
 
@@ -323,7 +322,7 @@ def affine_transform(mode):
 
 		# change affine matrix values
 		# translation
-		M[0,:,:] = [[1.,0.,0.25],[0.,1.,0.5]]
+		M[0,:,:] = [[1.,0.,0.],[0.,1.,0.]]
 		img_translate = transform2D(input_img, M)
 
 		# rotation
@@ -430,12 +429,152 @@ def affine_transform(mode):
 
 		plt.show()
 
+def random_deform_2d(image):
+	# grab the shape of the image
+	if len(image.shape) == 4:
+		B, H, W, C = image.shape
+		mode = "2D"
+	# mesh grid generation
+	# use x = np.linspace(-1, 1, W)  if you want to rotate about center
+	x = np.linspace(0, 1, W) 
+	y = np.linspace(0, 1, H)
+	x_t, y_t  = np.meshgrid(x,y)
+
+	# augment the dimensions to create homogeneous coordinates
+	# reshape to (xt, yt, 1)
+	ones = np.ones(np.prod(x_t.shape))
+	sampling_grid = np.vstack([x_t.flatten(),y_t.flatten()])
+
+	# repeat to number of batches
+	sampling_grid = np.resize(sampling_grid, (B, 2, H*W))
+
+	# transform the sampling grid by random addition
+	if W > H:
+		grid_deformation = (np.random.rand(sampling_grid.shape[0],sampling_grid.shape[1],sampling_grid.shape[2])-0.5)/W*1
+	else:
+		grid_deformation = (np.random.rand(sampling_grid.shape[0],sampling_grid.shape[1],sampling_grid.shape[2])-0.5)/H*1
+
+	# constant direction
+	grid_deformation = np.zeros(sampling_grid.shape)
+	grid_deformation[0,0,:] = 0
+	# grid_deformation[0,0,:] = 1/W*10
+	grid_deformation[0,1,:] = 1/H*10
+	# grid_deformation[0,1,:] = 0
+
+	batch_grids = sampling_grid + grid_deformation
+
+	# reshape to (B, H, W, 2)
+	batch_grids = batch_grids.reshape(B, 2, H, W)
+	batch_grids = np.moveaxis(batch_grids,1,-1)
+
+	sampling_grid = sampling_grid.reshape(B, 2, H, W)
+	sampling_grid = np.moveaxis(sampling_grid,1,-1)
+
+	deformation_field = -(batch_grids - sampling_grid) # note that the deformation field is the inverse of grid deformation
+
+	# bilinear resampler
+	x_s = batch_grids[:,:,:,0:1].squeeze()
+	y_s = batch_grids[:,:,:,1:2].squeeze()
+
+	# rescale x and y to [0, W/H]
+	# use this function if you want to rotate about center
+	# x = ((x_s+1.)*W)*0.5
+	# y = ((y_s+1.)*H)*0.5
+	x = ((x_s)*W)
+	y = ((y_s)*H)
+
+	# sampling grid and batch grid to image size
+	batch_grids[:,:,:,0:1] = batch_grids[:,:,:,0:1]*W
+	batch_grids[:,:,:,1:2] = batch_grids[:,:,:,1:2]*H
+	sampling_grid[:,:,:,0:1] = sampling_grid[:,:,:,0:1]*W
+	sampling_grid[:,:,:,1:2] = sampling_grid[:,:,:,1:2]*H
+
+	# for each coordinate we need to grab the corner coordinates
+	x0 = np.floor(x).astype(np.int64)
+	x1 = x0+1
+	y0 = np.floor(y).astype(np.int64)
+	y1 = y0+1
+
+	# clip to fit actual image size
+	x0 = np.clip(x0, 0, W-1)
+	x1 = np.clip(x1, 0, W-1)
+	y0 = np.clip(y0, 0, H-1)
+	y1 = np.clip(y1, 0, H-1)
+
+	# grab the pixel value for each corner coordinate
+	Ia = image[np.arange(B)[:,None,None], y0, x0]
+	Ib = image[np.arange(B)[:,None,None], y1, x0]
+	Ic = image[np.arange(B)[:,None,None], y0, x1]
+	Id = image[np.arange(B)[:,None,None], y1, x1]
+
+	# calculated the weighted coefficients and actual pixel value
+	wa = (x1-x) * (y1-y)
+	wb = (x1-x) * (y-y0)
+	wc = (x-x0) * (y1-y)
+	wd = (x-x0) * (y-y0)
+
+	# add dimension for addition
+	wa = np.expand_dims(wa, axis=3)
+	wb = np.expand_dims(wb, axis=3)
+	wc = np.expand_dims(wc, axis=3)
+	wd = np.expand_dims(wd, axis=3)
+
+	# compute output
+	image_out = wa*Ia + wb*Ib + wc*Ic + wd*Id
+	image_out = image_out.astype(np.int64)
+
+	return image_out, sampling_grid, batch_grids, deformation_field
+
 def vector_transform(mode):
+	if mode == "2D":
+		# 2D
+		input_img = load2D(DIMS=25)
+		image_out, sampling_grids, batch_grids, deformation_field = random_deform_2d(input_img)
+
+		plt.figure(1)
+		ax1 = plt.subplot(221)
+		plt.imshow(input_img[0,:,:,:], cmap="gray")
+		ax1.title.set_text('Original')
+		plt.axis("off")
+
+		ax2 = plt.subplot(222)
+		plt.imshow(image_out[0,:,:,:], cmap="gray")
+		ax2.title.set_text('Vector Deformation')
+		plt.axis("off")
+
+		ax3 = plt.subplot(223)
+		plt.plot(sampling_grids[0,:,:,0].ravel(),sampling_grids[0,:,:,1].ravel(),'.')
+		plt.xlim([0,input_img.shape[1]])
+		plt.ylim([0,input_img.shape[2]])
+
+		ax4 = plt.subplot(224)
+		M = np.hypot(deformation_field[0,:,:,0], deformation_field[0,:,:,1])
+		plt.quiver(
+			sampling_grids[0,:,:,0].ravel(),
+			sampling_grids[0,:,:,1].ravel(),
+			deformation_field[0,:,:,0].ravel(), 
+			-deformation_field[0,:,:,1].ravel(), ## note that Cartesian coordinate and pixel coordinate are in opposite direction for y axis
+			M.ravel(),
+			width=0.5,
+			scale=1/2,
+			units='xy')
+
+		# plt.plot(batch_grids[0,:,:,0].ravel(),batch_grids[0,:,:,1].ravel(),'.')
+		ax4.scatter(sampling_grids[0,:,:,0].ravel(),sampling_grids[0,:,:,1].ravel(), color='0.5', s=1)
+		# ax4.scatter(batch_grids[0,:,:,0].ravel(),batch_grids[0,:,:,1].ravel(), color='r', s=1)
+		plt.xlim([0,input_img.shape[1]])
+		plt.ylim([0,input_img.shape[2]])
+
+		plt.show()
+	else:
+		print("3D vector transform under development")
+
 	return
 
 def main():
 	MODE = '2D'
-	METHOD = 'AFFINE'
+	METHOD = 'VECTOR'
+	# METHOD = 'AFFINE'
 
 	if METHOD == 'AFFINE':
 		affine_transform(MODE)
