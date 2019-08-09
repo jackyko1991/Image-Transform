@@ -450,16 +450,25 @@ def random_deform_2d(image):
 
 	# transform the sampling grid by random addition
 	if W > H:
-		grid_deformation = (np.random.rand(sampling_grid.shape[0],sampling_grid.shape[1],sampling_grid.shape[2])-0.5)/W*1
+		grid_deformation = (np.random.rand(sampling_grid.shape[0],sampling_grid.shape[1],sampling_grid.shape[2])-0.5)/W*10
 	else:
-		grid_deformation = (np.random.rand(sampling_grid.shape[0],sampling_grid.shape[1],sampling_grid.shape[2])-0.5)/H*1
+		grid_deformation = (np.random.rand(sampling_grid.shape[0],sampling_grid.shape[1],sampling_grid.shape[2])-0.5)/H*10
 
-	# constant direction
-	grid_deformation = np.zeros(sampling_grid.shape)
-	grid_deformation[0,0,:] = 0
+	# # constant direction
+	# grid_deformation = np.zeros(sampling_grid.shape)
+	# # horizontal
 	# grid_deformation[0,0,:] = 1/W*10
-	grid_deformation[0,1,:] = 1/H*10
 	# grid_deformation[0,1,:] = 0
+	# # vertical
+	# grid_deformation[0,0,:] = 0
+	# grid_deformation[0,1,:] = 1/H*10
+
+	# circular deformation field
+	angle = 0
+	grid_deformation = np.zeros(sampling_grid.shape)
+	grid_deformation[0,0,:] = -np.sqrt(sampling_grid[0,0,:]**2 + sampling_grid[0,1,:]**2)/W*10
+	grid_deformation[0,1,:] = np.sqrt(sampling_grid[0,0,:]**2 + sampling_grid[0,1,:]**2)/H*10
+	# grid_deformation[0,1,:] = 1.0*math.sin(angle*math.pi/180)
 
 	batch_grids = sampling_grid + grid_deformation
 
@@ -470,7 +479,7 @@ def random_deform_2d(image):
 	sampling_grid = sampling_grid.reshape(B, 2, H, W)
 	sampling_grid = np.moveaxis(sampling_grid,1,-1)
 
-	deformation_field = -(batch_grids - sampling_grid) # note that the deformation field is the inverse of grid deformation
+	deformation_field = batch_grids - sampling_grid
 
 	# bilinear resampler
 	x_s = batch_grids[:,:,:,0:1].squeeze()
@@ -528,7 +537,7 @@ def random_deform_2d(image):
 def vector_transform(mode):
 	if mode == "2D":
 		# 2D
-		input_img = load2D(DIMS=25)
+		input_img = load2D(DIMS=50)
 		image_out, sampling_grids, batch_grids, deformation_field = random_deform_2d(input_img)
 
 		plt.figure(1)
@@ -543,7 +552,8 @@ def vector_transform(mode):
 		plt.axis("off")
 
 		ax3 = plt.subplot(223)
-		plt.plot(sampling_grids[0,:,:,0].ravel(),sampling_grids[0,:,:,1].ravel(),'.')
+		ax3.scatter(sampling_grids[0,:,:,0].ravel(),sampling_grids[0,:,:,1].ravel(), color='0.5', s=1)
+		ax3.scatter(batch_grids[0,:,:,0].ravel(),batch_grids[0,:,:,1].ravel(), color='r', s=1)
 		plt.xlim([0,input_img.shape[1]])
 		plt.ylim([0,input_img.shape[2]])
 
