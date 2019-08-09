@@ -21,6 +21,9 @@ Similarity metric plots based on histograms:
 3D affine transformation result (From up to down rows: original, translation, rotation, shear):
 ![alt text](./output/3d_transform.png "3D affine transformation result")
 
+2D vector transformation result (From top left to bottom right: original, deformed, original image grid (grey), deformed image grid (red), grid deformation vectors):
+![alt text](./output/2d_vector_deformation.png "3D affine transformation result")
+
 ## Reference
 - [Deep Learning Paper Implementations: Spatial Transformer Networks - Part I](https://kevinzakka.github.io/2017/01/10/stn-part1/)
 - [Deep Learning Paper Implementations: Spatial Transformer Networks - Part II](https://kevinzakka.github.io/2017/01/18/stn-part2/)

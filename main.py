@@ -466,7 +466,7 @@ def random_deform_2d(image):
 	# circular deformation field
 	angle = 0
 	grid_deformation = np.zeros(sampling_grid.shape)
-	grid_deformation[0,0,:] = -np.sqrt(sampling_grid[0,0,:]**2 + sampling_grid[0,1,:]**2)/W*10
+	grid_deformation[0,0,:] = -np.sqrt(sampling_grid[0,0,:]**2 + sampling_grid[0,1,:]**2)/W*10*2
 	grid_deformation[0,1,:] = np.sqrt(sampling_grid[0,0,:]**2 + sampling_grid[0,1,:]**2)/H*10
 	# grid_deformation[0,1,:] = 1.0*math.sin(angle*math.pi/180)
 
